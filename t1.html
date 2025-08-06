@@ -1,30 +1,186 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
-  <meta charset="UTF-8">
-  <title>n8n 聊天嵌入</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    iframe {
-      width: 100%;
-      height: 500px;
-      border: none;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>n8n Ollama Chat</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .chat-container {
+            width: 90%;
+            max-width: 600px;
+            height: 80vh;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chat-header {
+            background-color: #007bff;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .chat-box {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .message {
+            padding: 10px 15px;
+            border-radius: 18px;
+            max-width: 80%;
+            line-height: 1.4;
+        }
+        .user-message {
+            background-color: #007bff;
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        .bot-message {
+            background-color: #e9ecef;
+            color: #333;
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        .thinking {
+            color: #888;
+            font-style: italic;
+        }
+        .input-area {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #ddd;
+        }
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 20px;
+            margin-right: 10px;
+            font-size: 1em;
+        }
+        #send-btn {
+            padding: 10px 20px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background-color 0.3s;
+        }
+        #send-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
 </head>
 <body>
-  <div class="container">
-    <h1>我的 n8n 聊天介面</h1>
-    <iframe src="https://9603345e9aba.ngrok-free.app/webhook/b898c39a-312b-4333-bafd-8b9e69d176b1/chat"></iframe>
-  </div>
+
+    <div class="chat-container">
+        <div class="chat-header">Ollama AI 助理</div>
+        <div class="chat-box" id="chat-box">
+            <div class="message bot-message">您好！有什麼可以幫助您的嗎？</div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="在這裡輸入訊息...">
+            <button id="send-btn">傳送</button>
+        </div>
+    </div>
+
+    <script>
+        const chatBox = document.getElementById('chat-box');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+        
+        // 【重要】請將這裡的 URL 換成您的 ngrok 公開網址！
+        const N8N_WEBHOOK_URL = 'https://YOUR_NGROK_URL_HERE/webhook/b898c39a-312b-4333-bafd-8b9e69d176b1/chat';
+
+        // 監聽按鈕點擊
+        sendBtn.addEventListener('click', sendMessage);
+
+        // 監聽 Enter 鍵
+        userInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        function addMessage(text, sender) {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', `${sender}-message`);
+            messageElement.textContent = text;
+            chatBox.appendChild(messageElement);
+            // 自動滾動到底部
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const userMessage = userInput.value.trim();
+            if (userMessage === '') return;
+
+            // 1. 在畫面上顯示使用者訊息
+            addMessage(userMessage, 'user');
+            userInput.value = '';
+
+            // 2. 顯示 "思考中..."
+            const thinkingElement = document.createElement('div');
+            thinkingElement.classList.add('message', 'bot-message', 'thinking');
+            thinkingElement.textContent = '思考中...';
+            chatBox.appendChild(thinkingElement);
+            chatBox.scrollTop = chatBox.scrollHeight;
+
+            try {
+                // 3. 發送請求到 n8n webhook
+                const response = await fetch(N8N_WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    // 假設您的 n8n workflow 預期收到的 JSON 格式是 { "message": "..." }
+                    // 如果不是，請修改這裡的 body
+                    body: JSON.stringify({ message: userMessage })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`伺服器錯誤: ${response.status}`);
+                }
+                
+                const data = await response.json();
+
+                // 4. 移除 "思考中..."
+                chatBox.removeChild(thinkingElement);
+
+                // 5. 顯示 AI 回應
+                // 假設您的 n8n workflow 回傳的 JSON 格式是 { "response": "..." }
+                // 如果不是，請修改這裡的 data.response
+                const botResponse = data.response || "抱歉，我沒有收到有效的回覆。";
+                addMessage(botResponse, 'bot');
+
+            } catch (error) {
+                console.error('錯誤:', error);
+                // 移除 "思考中..." 並顯示錯誤訊息
+                chatBox.removeChild(thinkingElement);
+                addMessage(`發生錯誤：${error.message}。請檢查 n8n workflow、ngrok 連線以及瀏覽器開發者工具(F12)中的 Console 資訊。`, 'bot');
+            }
+        }
+    </script>
+
 </body>
 </html>
